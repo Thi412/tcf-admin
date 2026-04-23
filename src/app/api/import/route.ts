@@ -50,8 +50,8 @@ export async function POST(request: NextRequest) {
             topic_id: topicId,
             position: 'pour',
             idea: idea.idea.trim(),
-            ready_sentence: idea.example?.trim() ?? null,
-            sample_opinion: null,
+            ready_sentence: idea.example?.trim() || '',
+            sample_opinion: topic.sampleOpinion?.trim() || '',
           })
         }
 
@@ -61,18 +61,8 @@ export async function POST(request: NextRequest) {
             topic_id: topicId,
             position: 'contre',
             idea: idea.idea.trim(),
-            ready_sentence: idea.example?.trim() ?? null,
-            sample_opinion: null,
-          })
-        }
-
-        if (topic.sampleOpinion?.trim()) {
-          ideas.push({
-            topic_id: topicId,
-            position: 'pour',
-            idea: 'Opinion modèle',
-            ready_sentence: null,
-            sample_opinion: topic.sampleOpinion.trim(),
+            ready_sentence: idea.example?.trim() || '',
+            sample_opinion: topic.sampleOpinion?.trim() || '',
           })
         }
 
