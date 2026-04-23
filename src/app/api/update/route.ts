@@ -18,24 +18,16 @@ export async function POST(request: NextRequest) {
 
     const client = createServerClient()
 
-    // 1. Update topic
     const { error: topicErr } = await client
       .from('topics')
-      .update({
-        question: question.trim(),
-        theme: theme.trim(),
-        difficulty,
-      })
+      .update({ question: question.trim(), theme: theme.trim(), difficulty })
       .eq('id', id)
 
     if (topicErr) return NextResponse.json({ error: topicErr.message }, { status: 500 })
 
-    // 2. Delete old ideas
     await client.from('ideas_bank').delete().eq('topic_id', id)
 
-    // 3. Re-insert ideas — only valid columns
     const ideas: any[] = []
-    let pos = 0
 
     for (const idea of (pour ?? [])) {
       if (!idea.idea?.trim()) continue
@@ -45,7 +37,6 @@ export async function POST(request: NextRequest) {
         idea: idea.idea.trim(),
         ready_sentence: idea.example?.trim() ?? null,
         sample_opinion: null,
-        order_index: pos++,
       })
     }
 
@@ -57,7 +48,6 @@ export async function POST(request: NextRequest) {
         idea: idea.idea.trim(),
         ready_sentence: idea.example?.trim() ?? null,
         sample_opinion: null,
-        order_index: pos++,
       })
     }
 
@@ -68,7 +58,6 @@ export async function POST(request: NextRequest) {
         idea: 'Opinion modèle',
         ready_sentence: null,
         sample_opinion: sampleOpinion.trim(),
-        order_index: pos++,
       })
     }
 
