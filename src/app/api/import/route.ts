@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
 
 function checkAuth(request: NextRequest) {
-  const pwd = request.headers.get('x-admin-password')
-  return pwd === process.env.ADMIN_PASSWORD
+  return request.headers.get('x-admin-password') === process.env.ADMIN_PASSWORD
 }
 
 export async function POST(request: NextRequest) {
@@ -15,88 +14,92 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { taskType, topics } = body
 
-    if (!taskType || !Array.isArray(topics) || topics.length === 0) {
+    if (!taskType || !Array.isArray(topics)) {
       return NextResponse.json({ error: 'Format invalide' }, { status: 400 })
     }
 
     const client = createServerClient()
-    const results = { inserted: 0, errors: [] as string[] }
+    let inserted = 0
+    const errors: string[] = []
 
-    for (const t of topics) {
-      if (!t.question?.trim() || !t.theme?.trim()) {
-        results.errors.push(`Sujet invalide (question ou thème manquant): ${t.question ?? '?'}`)
-        continue
+    for (const topic of topics) {
+      try {
+        // 1. Insert topic
+        const { data: topicData, error: topicError } = await client
+          .from('topics')
+          .insert({
+            question: topic.question?.trim(),
+            theme: topic.theme?.trim() ?? '',
+            difficulty: topic.difficulty ?? 'B2',
+            task_type: taskType,
+            is_active: true,
+          })
+          .select('id')
+          .single()
+
+        if (topicError) {
+          errors.push(`Erreur topic "${topic.question}": ${topicError.message}`)
+          continue
+        }
+
+        const topicId = topicData.id
+
+        // 2. Build ideas — only columns that exist in ideas_bank
+        const ideas: any[] = []
+        let orderIndex = 0
+
+        for (const idea of (topic.pour ?? [])) {
+          if (!idea.idea?.trim()) continue
+          ideas.push({
+            topic_id: topicId,
+            position: 'pour',
+            idea: idea.idea.trim(),
+            ready_sentence: idea.example?.trim() ?? null,
+            sample_opinion: null,
+            order_index: orderIndex++,
+          })
+        }
+
+        for (const idea of (topic.contre ?? [])) {
+          if (!idea.idea?.trim()) continue
+          ideas.push({
+            topic_id: topicId,
+            position: 'contre',
+            idea: idea.idea.trim(),
+            ready_sentence: idea.example?.trim() ?? null,
+            sample_opinion: null,
+            order_index: orderIndex++,
+          })
+        }
+
+        if (topic.sampleOpinion?.trim()) {
+          ideas.push({
+            topic_id: topicId,
+            position: 'pour',
+            idea: 'Opinion modèle',
+            ready_sentence: null,
+            sample_opinion: topic.sampleOpinion.trim(),
+            order_index: orderIndex++,
+          })
+        }
+
+        if (ideas.length > 0) {
+          const { error: ideasError } = await client
+            .from('ideas_bank')
+            .insert(ideas)
+
+          if (ideasError) {
+            errors.push(`Erreur idées "${topic.question}": ${ideasError.message}`)
+          }
+        }
+
+        inserted++
+      } catch (err: any) {
+        errors.push(`Exception "${topic.question}": ${err.message}`)
       }
-
-      // Insert topic
-      const { data: topic, error: topicErr } = await client
-        .from('topics')
-        .insert({
-          task_type: taskType,
-          question: t.question.trim(),
-          theme: t.theme.trim(),
-          difficulty: t.difficulty ?? 'B2',
-          is_active: true,
-        })
-        .select()
-        .single()
-
-      if (topicErr || !topic) {
-        results.errors.push(`Erreur topic "${t.question}": ${topicErr?.message}`)
-        continue
-      }
-
-      // Build ideas
-      const ideas: any[] = []
-      let pos = 0
-
-      for (const idea of (t.pour ?? [])) {
-        if (!idea.idea?.trim()) continue
-        ideas.push({
-          topic_id: topic.id,
-          position: 'pour',
-          idea: idea.idea.trim(),
-          example: idea.example?.trim() ?? null,
-          ready_sentence: idea.example?.trim() ?? null,
-          order_index: pos++,
-          sample_opinion: null,
-        })
-      }
-
-      for (const idea of (t.contre ?? [])) {
-        if (!idea.idea?.trim()) continue
-        ideas.push({
-          topic_id: topic.id,
-          position: 'contre',
-          idea: idea.idea.trim(),
-          example: idea.example?.trim() ?? null,
-          ready_sentence: idea.example?.trim() ?? null,
-          order_index: pos++,
-          sample_opinion: null,
-        })
-      }
-
-      if (t.sampleOpinion?.trim()) {
-        ideas.push({
-          topic_id: topic.id,
-          position: 'pour',
-          idea: 'Opinion modèle',
-          example: null,
-          ready_sentence: null,
-          order_index: pos++,
-          sample_opinion: t.sampleOpinion.trim(),
-        })
-      }
-
-      if (ideas.length > 0) {
-        const { error: ideasErr } = await client.from('ideas_bank').insert(ideas)
-        if (ideasErr) results.errors.push(`Erreur idées "${t.question}": ${ideasErr.message}`)
-      }
-
-      results.inserted++
     }
 
-    return NextResponse.json(results)
+    return NextResponse.json({ inserted, errors })
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
