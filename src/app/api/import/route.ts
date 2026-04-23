@@ -24,7 +24,6 @@ export async function POST(request: NextRequest) {
 
     for (const topic of topics) {
       try {
-        // 1. Insert topic
         const { data: topicData, error: topicError } = await client
           .from('topics')
           .insert({
@@ -43,10 +42,7 @@ export async function POST(request: NextRequest) {
         }
 
         const topicId = topicData.id
-
-        // 2. Build ideas — only columns that exist in ideas_bank
         const ideas: any[] = []
-        let orderIndex = 0
 
         for (const idea of (topic.pour ?? [])) {
           if (!idea.idea?.trim()) continue
@@ -56,7 +52,6 @@ export async function POST(request: NextRequest) {
             idea: idea.idea.trim(),
             ready_sentence: idea.example?.trim() ?? null,
             sample_opinion: null,
-            order_index: orderIndex++,
           })
         }
 
@@ -68,7 +63,6 @@ export async function POST(request: NextRequest) {
             idea: idea.idea.trim(),
             ready_sentence: idea.example?.trim() ?? null,
             sample_opinion: null,
-            order_index: orderIndex++,
           })
         }
 
@@ -79,15 +73,11 @@ export async function POST(request: NextRequest) {
             idea: 'Opinion modèle',
             ready_sentence: null,
             sample_opinion: topic.sampleOpinion.trim(),
-            order_index: orderIndex++,
           })
         }
 
         if (ideas.length > 0) {
-          const { error: ideasError } = await client
-            .from('ideas_bank')
-            .insert(ideas)
-
+          const { error: ideasError } = await client.from('ideas_bank').insert(ideas)
           if (ideasError) {
             errors.push(`Erreur idées "${topic.question}": ${ideasError.message}`)
           }
